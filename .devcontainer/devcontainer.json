@@ -5,6 +5,7 @@
 	"dockerFile": "Dockerfile",
 	"runArgs": [
 		"-u", "br-user",
+		"--device=/dev/kvm:/dev/kvm", 
 		"--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"
 	],
 

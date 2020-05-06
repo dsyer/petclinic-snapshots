@@ -18,7 +18,7 @@ USER root
 RUN apt-get update \
     && apt-get -y install --no-install-recommends apt-utils dialog 2>&1 \
     #
-    && apt-get -y install git openssh-client less iproute2 procps lsb-release qemu-utils \
+    && apt-get -y install curl git openssh-client less iproute2 procps lsb-release qemu-utils \
     #
     # [Optional] Add sudo support
     && apt-get install -y sudo \

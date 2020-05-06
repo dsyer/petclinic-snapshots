@@ -1,0 +1,35 @@
+#!/bin/sh
+
+start() {
+        printf "Starting Petclinic: "
+        /usr/bin/java -jar /root/petclinic.jar > /var/log/petclinic &
+        echo $! > /var/run/petclinic
+        echo "OK"
+}
+stop() {
+        printf "Stopping Petclinic: "
+        kill $(cat /var/run/petclinic)
+        rm -f /var/run/petclinic
+        echo "OK"
+}
+restart() {
+        stop
+        start
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  restart|reload)
+        restart
+        ;;
+  *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+esac
+
+exit $?

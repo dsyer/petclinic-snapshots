@@ -13,6 +13,8 @@ $ curl -L https://github.com/buildroot/buildroot/tarball/master | tar -zxf - --s
 
 ## Build a VM Image
 
+You can do this on the host if you have the right tools installed (in Ubuntu you need `gcc g++ build-essential libncurses-dev unxip bc`). Or you can open the project in VSCode and `Reopen in Container` to start a container that has all the tools installed, then you can run these commands in a terminal in the IDE:
+
 ```
 $ make qemu_x86_64_defconfig
 $ make menuconfig
@@ -21,8 +23,8 @@ $ make menuconfig
 Configuration options:
 
 * "Toolchain": select `glibc` and `C++` support
-* "Target Packages": select `X.Org` from "Graphic libraries..." and `openjdk` from "Interpreter languages..." and "openssh" from "Networking..."
-* "Filesystem images": select a larger filesystem images size in and make it an `ext4` filesystem type
+* "Target Packages": select `X.Org` from "Graphic libraries..." and `openjdk` from "Interpreter languages...". Add "openssh" from "Networking..." if you want to use ssh or scp to modify the image.
+* "Filesystem images": select a larger filesystem image size in and make it an `ext4` filesystem type
 * "System configuration": set a root password (optionally) and switch _off_ the `getty` on console (it seems to end up ignoring the root password)
 
 Then:
@@ -76,51 +78,67 @@ OpenJDK 64-Bit Server VM (build 13.0.2+13, mixed mode)
 
 ## Run the Petclinic
 
-So now we need to copy in a JAR file that we can run (that's where a root password comes in handy).
+First download the source code. From the root (where the `README` is):
 
 ```
-$ scp spring-petclinic-2.3.0.BUILD-SNAPSHOT.jar -P 2222 root@192.168.2.19:~/petclinic.jar
-root@192.168.2.19's password: 
-spring-petclinic-2.3.0.BUILD-SNAPSHOT.jar        100%   46MB  93.6MB/s   00:00    
+$ mkdir -p petclinic
+$ cd petclinic
+$ curl -L https://github.com/spring-projects/spring-petclinic | tar -zxf - --strip-components=0
+$ ./mvnw package
+$ cd ..
 ```
 
-And we can run it in the VM:
+So now we need to copy in a JAR file that we can run. You could use `scp` and set it up manually, or you can build it into the VM image. Here's how to do the latter:
 
 ```
-# java -jar petclinic.jar 
-
-
-              |\      _,,,--,,_
-             /,`.-'`'   ._  \-;;,_
-  _______ __|,4-  ) )_   .;.(__`'-'__     ___ __    _ ___ _______
- |       | '---''(_/._)-'(_\_)   |   |   |   |  |  | |   |       |
- |    _  |    ___|_     _|       |   |   |   |   |_| |   |       | __ _ _
- |   |_| |   |___  |   | |       |   |   |   |       |   |       | \ \ \ \
- |    ___|    ___| |   | |      _|   |___|   |  _    |   |      _|  \ \ \ \
- |   |   |   |___  |   | |     |_|       |   | | |   |   |     |_    ) ) ) )
- |___|   |_______| |___| |_______|_______|___|_|  |__|___|_______|  / / / /
- ==================================================================/_/_/_/
-
-:: Built with Spring Boot :: 2.3.0.M4
-
-
-2020-05-01 14:46:30.675  INFO 158 --- [           main] o.s.s.petclinic.PetClinicApplication     : Starting PetClinicApplication v2.3.0.BUILD-SNAPSHOT on buildroot with PID 158 (/root/petclinic.jar started by root in /root)
-...
-2020-05-01 14:46:45.137  INFO 158 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port(s): 8080 (http) with context path ''
-2020-05-01 14:46:45.143  INFO 158 --- [           main] o.s.s.petclinic.PetClinicApplication     : Started PetClinicApplication in 15.224 seconds (JVM running for 16.152)
+$ cp -rf  overlay buildroot
+$ cp petclinic/target/*.jar buildroot/overlay/root/petclinic.jar
+$ sed -i -e ',^BR2_ROOTFS_OVERLAY=.*$,BR2_ROOTFS_OVERLAY="./overlay",' buildroot/.config
+$ (cd buildroot; make)
+$ cd buildroot/output/images
+$ qemu-img convert -O qcow2 rootfs.ext2 rootfs.qcow
 ```
 
-So it took 15 seconds to start, but we constrained the system a lot, so it's not expected to be super quick. If we gave it more memory and cpus it would start much quicker, probably closer to 3 seconds on the host. Warm it up by curling it from the host:
+Now run the image again (on the host if you were building in a container):
 
 ```
-$ curl 192.168.2.19:8080
+$ qemu-system-x86_64 -M pc-i440fx-2.8 -enable-kvm -m 2048 -kernel bzImage -drive file=rootfs.qcow,if=virtio,format=qcow2 -append 'rootwait root=/dev/vda' -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080
+```
+
+To run without the QEMU GUI:
+
+```
+$ qemu-system-x86_64 -M pc-i440fx-2.8 -enable-kvm -m 2048 -kernel bzImage -drive file=rootfs.qcow,if=virtio,format=qcow2 -append 'rootwait root=/dev/vda console=ttys0' -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 -nographic
+```
+
+If you have issues with permissions, e.g.
+
+```
+$ qemu-system-x86_64 ...
+Could not access KVM kernel module: Permission denied
+failed to initialize KVM: Permission denied
+```
+
+then check that you are a member of the `kvm` group and that `/dev/kvm` belongs to that group, e.g.
+
+```
+$ sudo chown root:kvm /dev/kvm 
+$ sudo usermod -aG kvm br-user
+$ newgrp kvm
+$ newgrp br-user
+```
+
+The petclinic runs in the VM when it starts. It takes about 15 seconds to start, but we constrained the system a lot, so it's not expected to be super quick. If we gave it more memory and cpus it would start much quicker, probably closer to 3 seconds on the host. Warm it up by curling it from the host (try a few times if it fails at first - it might still be starting):
+
+```
+$ curl localhost:8080
 ...
 </html>
 ```
 
 ## Take a Snapshot
 
-We can take a snapshot:
+We can take a snapshot in QEMU GUI (if you are running with `-nographic` then it is `CTRL-A C`):
 
 ```
 CTRL-ALT-2
@@ -154,10 +172,10 @@ RUN apt-get install -y qemu
 COPY output/images/bzImage /
 COPY output/images/rootfs.qcow /rootfs.qcow
 
-ENTRYPOINT [ "qemu-system-x86_64", "-M", "pc-i440fx-2.11", "-enable-kvm", "-m", "2048", "-kernel", "bzImage", "-drive", "file=rootfs.qcow,if=virtio,format=qcow2", "-append", "rootwait root=/dev/vda", "-net", "nic,model=virtio", "-net", "user,hostfwd=tcp::8080-:8080", "-loadvm", "petclinic", "-nographic" ]
+ENTRYPOINT [ "qemu-system-x86_64", "-M", "pc-i440fx-2.8", "-enable-kvm", "-m", "2048", "-kernel", "bzImage", "-drive", "file=rootfs.qcow,if=virtio,format=qcow2", "-append", "rootwait root=/dev/vda", "-net", "nic,model=virtio", "-net", "user,hostfwd=tcp::8080-:8080", "-loadvm", "petclinic", "-nographic" ]
 ```
 
-> NOTE: the snapshot will only work in a container if it was made with a compatible machine type (`qemu-system-x86_64 -M help` for a list). The base image in the `Dockerfile` is Ubuntu 18.04 so the "bionic" machine types work, but those aren't present on non-Ubuntu hosts.
+> NOTE: the snapshot will only work in a container if it was made with a compatible machine type (`qemu-system-x86_64 -M help` for a list). The base image in the `Dockerfile` is Ubuntu 18.04 so the "bionic" machine types work, but those aren't present on non-Ubuntu hosts. The example here `pc-i440fx-2.8` is a lowest common denominator between all the systems I used including the `buildroot` container.
 
 So
 
