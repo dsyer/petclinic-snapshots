@@ -1,7 +1,7 @@
 
 How to run the [Spring Petclinic](https://github.com/spring-projects/spring-petclinic) on Kubernetes with subsecond scale up. The first step is to build a lightweight VM image with [Buildroot](https://github.com/buildroot/buildroot). Then you log in and get the Petclinic running. Then you containerize it, and finally deploy to Kubernetes. 
 
-TL;DR You can containerize a VM snapshot. It's fast, but not as fast as if you run it on the host. You can start Petclinic in less than half a second on the host, and less than a second in a container. In Kubernetes it feels pretty much instantaneous.
+TL;DR You can containerize a VM snapshot. It's fast, but not as fast as if you run it on the host. You can start Petclinic in less than half a second on the host, and less than a second in a container. In Kubernetes it feels pretty much instantaneous. The containers have to run `--privileged`.
 
 ## Get Buildroot
 
