@@ -183,6 +183,8 @@ Total of .906540588 seconds elapsed for process
 
 It's still not super fast, it has to be said, and it relies on being able to `docker start` an existing container. Why is it not as fast as re-hydrating the VM image (running the same command) on the host?
 
+> NOTE: Instead of `--privileged` you can use `--device=/dev/kvm:/dev/kvm`, but that's probably just as bad securitywise.
+
 ## Deploy to Kubernetes
 
 Make a deployment:
