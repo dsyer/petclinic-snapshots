@@ -43,7 +43,7 @@ $ qemu-img convert -O qcow2 rootfs.ext2 rootfs.qcow
 Now we can run it on the host:
 
 ```
-$ qemu-system-x86_64 -enable-kvm -m 2048 -kernel bzImage -drive file=rootfs.qcow,if=virtio,format=qcow2 -append 'rootwait root=/dev/vda' -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080
+$ qemu-system-x86_64 -M pc-i440fx-2.11 -enable-kvm -m 2048 -kernel bzImage -drive file=rootfs.qcow,if=virtio,format=qcow2 -append 'rootwait root=/dev/vda' -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080
 ```
 
 The console comes up and you log in:
