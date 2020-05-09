@@ -3,7 +3,77 @@ How to run the [Spring Petclinic](https://github.com/spring-projects/spring-petc
 
 TL;DR You can containerize a VM snapshot. It's fast, but not as fast as if you run it on the host. You can start Petclinic in less than half a second on the host, and less than a second in a container. In Kubernetes it feels pretty much instantaneous. The containers have to run `--privileged`.
 
-## Get Buildroot
+## Quick Start and Automation
+
+There's a script that builds a container (pre-requisites, `docker`, `qemu`, `qemu-utils`, you have to be running as user `uid=1000`):
+
+```
+$ ./build.sh
+$ docker run --privileged -p 8080:8080 localhost:5000/dsyer/snapshot
+```
+
+The container starts very fast, and serves the PetClinic on port 8080.
+
+## Deploy to Kubernetes
+
+Make a deployment:
+
+```
+$ kubectl create deployment petclinic --image localhost:5000/dsyer/snapshot --dry-run -o yaml > deployment.yaml
+$ echo --- >> deployment.yaml
+$ kubectl create service clusterip petclinic --tcp=80:8080 --dry-run -o yaml >> deployment.yaml
+```
+
+and escalate the security context in the container so it can run privileged:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+...
+    spec:
+      containers:
+      - image: localhost:5000/dsyer/snapshot
+        name: snapshot
+        securityContext:
+          privileged: true
+```
+
+Then deploy:
+
+```
+$ kubectl apply -f deployment.yaml
+```
+
+You will see the container start very quickly if you have a dashboard or `kubectl get all` running in another terminal. Scale it up by adding replicas:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: petclinic
+  name: petclinic
+spec:
+  replicas: 2
+...
+```
+
+and they start instantly:
+
+```
+every 1.0s: kubectl get all                                    tower: Wed May  6 08:13:19 2020
+
+NAME                             READY   STATUS    RESTARTS   AGE
+pod/petclinic-86468f4bb7-ph2kb   1/1     Running   0          7m12s
+pod/petclinic-86468f4bb7-rfhgt   1/1     Running   0          6s
+...
+```
+
+## The Gorey Details
+
+Here's how to do it all a bit more manually, giving details at each step and options for how to do things differently.
+
+### Get Buildroot
 
 ```
 $ mkdir -p buildroot
@@ -11,7 +81,7 @@ $ cd buildroot
 $ curl -L https://github.com/buildroot/buildroot/tarball/master | tar -zxf - --strip-components=1
 ```
 
-## Build a VM Image
+### Build a VM Image
 
 You can do this on the host if you have the right tools installed (in Ubuntu you need `gcc g++ build-essential libncurses-dev unxip bc`). Or you can open the project in VSCode and `Reopen in Container` to start a container that has all the tools installed, then you can run these commands in a terminal in the IDE:
 
@@ -45,7 +115,7 @@ $ qemu-img convert -O qcow2 rootfs.ext2 rootfs.qcow
 Now we can run it on the host:
 
 ```
-$ qemu-system-x86_64 -M pc-i440fx-2.11 -enable-kvm -m 2048 -kernel bzImage -drive file=rootfs.qcow,if=virtio,format=qcow2 -append 'rootwait root=/dev/vda' -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080
+$ qemu-system-x86_64 -M pc-i440fx-2.8 -enable-kvm -m 2048 -kernel bzImage -drive file=rootfs.qcow,if=virtio,format=qcow2 -append 'rootwait root=/dev/vda' -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080
 ```
 
 The console comes up and you log in:
@@ -76,7 +146,7 @@ OpenJDK Runtime Environment (build 13.0.2+13)
 OpenJDK 64-Bit Server VM (build 13.0.2+13, mixed mode)
 ```
 
-## Run the Petclinic
+### Run the Petclinic
 
 First download the source code. From the root (where the `README` is):
 
@@ -136,7 +206,7 @@ $ curl localhost:8080
 </html>
 ```
 
-## Take a Snapshot
+### Take a Snapshot
 
 We can take a snapshot in QEMU GUI (if you are running with `-nographic` then it is `CTRL-A C`):
 
@@ -159,7 +229,7 @@ qemu-system-x86_64: terminating on signal 15 from pid 2955613 ()
 
 It's slightly slower with 4096M memory, but not much (<10%).
 
-## Containerize the Snapshot
+### Containerize the Snapshot
 
 When you have the snaphot you can build it into a container image. Here's a `Dockerfile`:
 
@@ -203,57 +273,3 @@ It's still not super fast, it has to be said, and it relies on being able to `do
 
 > NOTE: Instead of `--privileged` you can use `--device=/dev/kvm:/dev/kvm`, but that's probably just as bad securitywise.
 
-## Deploy to Kubernetes
-
-Make a deployment:
-
-```
-$ kubectl create deployment petclinic --image localhost:5000/dsyer/snapshot --dry-run -o yaml > deployment.yaml
-$ echo --- >> deployment.yaml
-$ kubectl create service clusterip petclinic --tcp=80:8080 --dry-run -o yaml >> deployment.yaml
-```
-
-and escalate the security context in the container so it can run privileged:
-
-```
-apiVersion: apps/v1
-kind: Deployment
-...
-    spec:
-      containers:
-      - image: localhost:5000/dsyer/snapshot
-        name: snapshot
-        securityContext:
-          privileged: true
-```
-
-Then deploy:
-
-```
-$ kubectl apply -f deployment.yaml
-```
-
-You will see the container start very quickly if you have a dashboard or `kubectl get all` running in another terminal. Scale it up by adding replicas:
-
-```
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    app: petclinic
-  name: petclinic
-spec:
-  replicas: 2
-...
-```
-
-and they start instantly:
-
-```
-every 1.0s: kubectl get all                                    tower: Wed May  6 08:13:19 2020
-
-NAME                             READY   STATUS    RESTARTS   AGE
-pod/petclinic-86468f4bb7-ph2kb   1/1     Running   0          7m12s
-pod/petclinic-86468f4bb7-rfhgt   1/1     Running   0          6s
-...
-```
