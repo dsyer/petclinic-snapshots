@@ -17,7 +17,23 @@ $ docker run --runtime=kata-qemu -it busybox
 bin   dev   etc   home  proc  root  sys   tmp   usr   var
 ```
 
-When that container is running you see a `qemu` process on the host with a long command line. But you can't run a container that itself runs qemu:
+Sometimes running a bigger (JVM) container fails like this though:
+
+```
+$ docker run -p 8080:8080 --runtime=kata-qemu dsyer/petclinic
+library initialization failed - unable to allocate file descriptor table - out of memory
+```
+
+and I found you could fix that by passing an explicit ulimit on the docker command line:
+
+```
+$ docker run -p 8080:8080 --ulimit nofile=122880:122880 --runtime=kata-qemu dsyer/petclinic
+```
+
+When that container is running you see a `qemu` process on the host with a long command line.
+
+
+But you can't run a container that itself runs qemu:
 
 ```
 $ docker run --privileged -p 8080:8080 --runtime=kata-qemu localhost:5000/dsyer/snapshot
