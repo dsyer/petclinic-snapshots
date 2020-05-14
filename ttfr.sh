@@ -6,11 +6,11 @@ if ! [ "-d" == "$1" ]; then
     docker=false
     snapshot_name=${1:-petclinic}
     disk_name=${2:-rootfs.qcow}
-    if qemu-img snapshot -l output/images/${disk_name} | grep ${snapshot_name}; then
+    if qemu-img snapshot -l buildroot/output/images/${disk_name} | grep ${snapshot_name}; then
         snapshot="-loadvm ${snapshot_name}"
     fi
     echo Running VM
-    qemu-system-x86_64 -M pc-i440fx-bionic -m 2048 -kernel output/images/bzImage -drive file=output/images/${disk_name},if=virtio,format=qcow2 -append "rootwait root=/dev/vda" -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 -enable-kvm $snapshot &
+    qemu-system-x86_64 -M pc-i440fx-2.8 -m 2048 -kernel buildroot/output/images/bzImage -drive file=buildroot/output/images/${disk_name},if=virtio,format=qcow2 -append "rootwait root=/dev/vda console=ttyS0" -nographic -net nic,model=virtio -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 -enable-kvm $snapshot &
 else
     docker=true
     shift

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: petclinic
+  name: petclinic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: petclinic
+  template:
+    metadata:
+      labels:
+        app: petclinic
+    spec:
+      runtimeClassName: kata-qemu
+      containers:
+      - image: dsyer/petclinic
+        name: petclinic
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: petclinic
+  name: petclinic
+spec:
+  ports:
+  - name: 80-8080
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: petclinic

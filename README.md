@@ -1,5 +1,5 @@
 
-How to run the [Spring Petclinic](https://github.com/spring-projects/spring-petclinic) on Kubernetes with subsecond scale up. The first step is to build a lightweight VM image with [Buildroot](https://github.com/buildroot/buildroot). Then you log in and get the Petclinic running. Then you containerize it, and finally deploy to Kubernetes. 
+How to run the [Spring Petclinic](https://github.com/spring-projects/spring-petclinic) on Kubernetes with subsecond scale up. The first step is to build a lightweight VM image with [Buildroot](https://github.com/buildroot/buildroot). Then you log in and get the Petclinic running. Then you containerize it, and finally deploy to Kubernetes. Fun fact: if you run with MySQL instead of the default in-memory database, it still works surprisingly well.
 
 TL;DR You can containerize a VM snapshot. It's fast, but not as fast as if you run it on the host. You can start Petclinic in less than half a second on the host, and less than a second in a container. In Kubernetes it feels pretty much instantaneous. The containers have to run `--privileged`.
 
@@ -273,3 +273,23 @@ It's still not super fast, it has to be said, and it relies on being able to `do
 
 > NOTE: Instead of `--privileged` you can use `--device=/dev/kvm:/dev/kvm`, but that's probably just as bad securitywise.
 
+## Running on MySQL
+
+You can use `docker-compose` to run MySQL on the host in a container (there's a `docker-compose.yml` in the Pet Clinic source). Then add `--spring.profiles.active=mysql` and `--spring.datasource.url=jdbc:mysql://172.17.0.1/petclinic` to the script that runs the app (checking the IP address of your Docker network). The app runs fine, of course, but you can also checkpoint it and run the snapshot. The result is that all the open connections get closed and the connection pool moans when it has to restart them all. After a snapshot launch:
+
+```
+# cat /var/log/petclinic
+...
+2020-05-14 07:42:57.703  WARN 178 --- [nio-8080-exec-4] com.zaxxer.hikari.pool.PoolBase          : HikariPool-1 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@2f9dac3f (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+2020-05-14 07:42:57.705  WARN 178 --- [nio-8080-exec-4] com.zaxxer.hikari.pool.PoolBase          : HikariPool-1 - Failed to validate connection com.mysql.cj.jdbc.ConnectionImpl@6545665b (No operations allowed after connection closed.). Possibly consider using a shorter maxLifetime value.
+...
+```
+
+but the app is running fine:
+
+```
+# curl localhost:8080/actuator/health
+{"status": "UP"}
+```
+
+To make this more reliable you would need help stabilizing the hostname. DNS in Kubernetes should be fine for that, but the same snapshot will not run in Kubernetes and on the host. We have to compromise there somewhere, or else find a way to dynamically inject the hostname. Then you have to worry about other credentials that might not be known when the image is built. For this reason, it is probably a good idea eventually to have the snapshots managed in the cluster, not at build time. We could find ways to work around that in the application code, but it would be working against the grain of the developer tools (connection pools like to be immutable, for instance).
